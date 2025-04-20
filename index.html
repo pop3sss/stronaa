@@ -1,0 +1,451 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mines</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #12122a 0%, #1e1e4a 100%);
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+
+        .container {
+            background: rgba(20, 20, 40, 0.95);
+            padding: 40px;
+            border-radius: 25px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            max-width: 650px;
+            text-align: center;
+            backdrop-filter: blur(15px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.1), transparent);
+            z-index: 0;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 25px;
+            color: #ffffff;
+            text-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+            position: relative;
+            z-index: 1;
+        }
+
+        .balance {
+            font-size: 2rem;
+            margin-bottom: 25px;
+            padding: 12px;
+            background: linear-gradient(45deg, #2a2a5a, #3a3a7a);
+            border-radius: 12px;
+            color: #00ff88;
+            box-shadow: 0 4px 10px rgba(0, 255, 136, 0.2);
+            position: relative;
+            z-index: 1;
+        }
+
+        .game-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 25px;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .game-controls input,
+        .game-controls select {
+            padding: 14px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 10px;
+            background: #2a2a5a;
+            color: #ffffff;
+            width: 160px;
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        .game-controls input:focus,
+        .game-controls select:focus {
+            outline: none;
+            background: #3a3a7a;
+            transform: translateY(-2px);
+        }
+
+        .game-controls button {
+            padding: 14px 28px;
+            font-size: 1.1rem;
+            background: linear-gradient(45deg, #4CAF50, #66ff99);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .game-controls button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(0, 255, 128, 0.4);
+        }
+
+        .game-controls button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .all-in-button {
+            background: linear-gradient(45deg, #ff4444, #ff6666);
+        }
+
+        .all-in-button:hover {
+            box-shadow: 0 6px 15px rgba(255, 68, 68, 0.4);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 80px);
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 25px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .cell {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(145deg, #3a3a5a, #2a2a4a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5rem;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: transform 0.2s, background 0.3s;
+            user-select: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .cell:hover {
+            transform: scale(1.08);
+        }
+
+        .cell.revealed {
+            cursor: default;
+            transform: none;
+        }
+
+        .cell.mine {
+            background: linear-gradient(145deg, #ff4444, #cc3333);
+            animation: shake 0.3s;
+        }
+
+        .cell.safe {
+            background: linear-gradient(145deg, #00cc66, #00994d);
+        }
+
+        .message {
+            font-size: 1.3rem;
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+
+        @media (max-width: 600px) {
+            .grid {
+                grid-template-columns: repeat(5, 60px);
+            }
+            .cell {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+            .container {
+                padding: 25px;
+            }
+            .game-controls input,
+            .game-controls select {
+                width: 140px;
+            }
+            h1 {
+                font-size: 2.5rem;
+            }
+            .balance {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mines</h1>
+        <div class="balance">Saldo: <span id="balance">1000</span> PLN</div>
+        <div class="game-controls">
+            <input type="number" id="minesBetAmount" min="1" placeholder="Zakład (PLN)">
+            <select id="mineCount">
+                <option value="1">1 mina</option>
+                <option value="2">2 miny</option>
+                <option value="3">3 miny</option>
+            </select>
+            <button id="minesAllIn">All In</button>
+            <button id="minesStartGame">Rozpocznij grę</button>
+            <button id="minesCashOut" style="display: none;">Wypłać <span id="minesCashOutAmount">0</span> PLN</button>
+        </div>
+        <div class="grid" id="minesGrid"></div>
+        <div class="message" id="minesMessage"></div>
+    </div>
+
+    <script>
+        let balance = 1000;
+        const balanceElement = document.getElementById('balance');
+
+        // Audio elements
+        const clickSound = new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_6d0d750382.mp3');
+        const winSound = new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_5f5b8b6e1e.mp3');
+        const loseSound = new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_3e4b4b6e1e.mp3');
+        const cashOutSound = new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_2f8b4b6e1e.mp3');
+
+        function updateBalance() {
+            balanceElement.textContent = balance.toFixed(2);
+        }
+
+        // Mines Game Logic
+        let minesGameActive = false;
+        let mines = [];
+        let minesRevealed = [];
+        let minesBetAmount = 0;
+        let mineCount = 1;
+        let minesMultiplier = 1;
+        const minesGridSize = 25;
+        let lastClickedIndex = null;
+
+        const minesBetAmountInput = document.getElementById('minesBetAmount');
+        const mineCountInput = document.getElementById('mineCount');
+        const minesAllInButton = document.getElementById('minesAllIn');
+        const minesStartGameButton = document.getElementById('minesStartGame');
+        const minesCashOutButton = document.getElementById('minesCashOut');
+        const minesCashOutAmountElement = document.getElementById('minesCashOutAmount');
+        const minesGridElement = document.getElementById('minesGrid');
+        const minesMessageElement = document.getElementById('minesMessage');
+
+        function generateMines(count) {
+            mines = [];
+            while (mines.length < count) {
+                const pos = Math.floor(Math.random() * minesGridSize);
+                if (!mines.includes(pos)) mines.push(pos);
+            }
+        }
+
+        function createMinesGrid() {
+            minesGridElement.innerHTML = '';
+            minesRevealed = [];
+            for (let i = 0; i < minesGridSize; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.addEventListener('click', () => revealMinesCell(i));
+                minesGridElement.appendChild(cell);
+            }
+        }
+
+        function getMinesMultiplierBase() {
+            switch (parseInt(mineCount)) {
+                case 1: return 1.05;
+                case 2: return 1.10;
+                case 3: return 1.15;
+                default: return 1.05;
+            }
+        }
+
+        function getAdjacentCells(index) {
+            const row = Math.floor(index / 5);
+            const col = index % 5;
+            const adjacent = [];
+            for (let r = row - 1; r <= row + 1; r++) {
+                for (let c = col - 1; c <= col + 1; c++) {
+                    if (r >= 0 && r < 5 && c >= 0 && c < 5 && !(r === row && c === col)) {
+                        const adjIndex = r * 5 + c;
+                        if (!minesRevealed.includes(adjIndex)) {
+                            adjacent.push(adjIndex);
+                        }
+                    }
+                }
+            }
+            return adjacent;
+        }
+
+        function startMinesGame() {
+            minesBetAmount = parseFloat(minesBetAmountInput.value) || 0;
+            mineCount = parseInt(mineCountInput.value) || 1;
+            if (minesBetAmount <= 0 || minesBetAmount > balance) {
+                minesMessageElement.textContent = 'Nieprawidłowa kwota zakładu lub niewystarczające saldo.';
+                return;
+            }
+            if (mineCount < 1 || mineCount > 3) {
+                minesMessageElement.textContent = 'Liczba min musi być od 1 do 3.';
+                return;
+            }
+
+            balance -= minesBetAmount;
+            updateBalance();
+            generateMines(mineCount);
+            createMinesGrid();
+            minesGameActive = true;
+            minesStartGameButton.disabled = true;
+            minesAllInButton.disabled = true;
+            minesCashOutButton.style.display = 'inline-block';
+            minesCashOutAmountElement.textContent = (minesBetAmount * minesMultiplier).toFixed(2);
+            minesMessageElement.textContent = 'Odkrywaj pola, uważaj na miny!';
+            minesMultiplier = 1;
+            lastClickedIndex = null;
+            clickSound.play();
+        }
+
+        function allIn() {
+            if (minesGameActive) return;
+            minesBetAmountInput.value = balance;
+            clickSound.play();
+        }
+
+        function revealMinesCell(index) {
+            if (!minesGameActive || minesRevealed.includes(index)) return;
+
+            minesRevealed.push(index);
+            const cell = minesGridElement.children[index];
+
+            // Jeśli to nie pierwsze kliknięcie, manipulujemy minami
+            if (lastClickedIndex !== null) {
+                const adjacentCells = getAdjacentCells(lastClickedIndex);
+                if (adjacentCells.includes(index)) {
+                    // 90% szans na minę w sąsiednim polu
+                    if (Math.random() < 0.9 && !mines.includes(index)) {
+                        mines.push(index);
+                    }
+                }
+            }
+
+            cell.classList.add('revealed');
+
+            if (mines.includes(index)) {
+                cell.classList.add('mine');
+                cell.textContent = '💣';
+                minesGameActive = false;
+                minesStartGameButton.disabled = false;
+                minesAllInButton.disabled = false;
+                minesCashOutButton.style.display = 'none';
+                minesMessageElement.textContent = 'Przegrałeś! Trafiłeś na minę.';
+                mines.forEach(mine => {
+                    if (!minesRevealed.includes(mine)) {
+                        minesGridElement.children[mine].classList.add('mine');
+                        minesGridElement.children[mine].textContent = '💣';
+                    }
+                });
+                loseSound.play();
+            } else {
+                cell.classList.add('safe');
+                cell.textContent = '💎';
+                minesMultiplier *= getMinesMultiplierBase();
+                minesCashOutAmountElement.textContent = (minesBetAmount * minesMultiplier).toFixed(2);
+                minesMessageElement.textContent = `Aktualny mnożnik: ${minesMultiplier.toFixed(2)}x`;
+                winSound.play();
+            }
+
+            lastClickedIndex = index;
+        }
+
+        function minesCashOut() {
+            if (!minesGameActive) return;
+
+            const winnings = minesBetAmount * minesMultiplier;
+            balance += winnings;
+            updateBalance();
+            minesGameActive = false;
+            minesStartGameButton.disabled = false;
+            minesAllInButton.disabled = false;
+            minesCashOutButton.style.display = 'none';
+            minesMessageElement.textContent = `Wypłaciłeś ${winnings.toFixed(2)} PLN!`;
+            cashOutSound.play();
+        }
+
+        minesStartGameButton.addEventListener('click', startMinesGame);
+        minesAllInButton.addEventListener('click', allIn);
+        minesCashOutButton.addEventListener('click', minesCashOut);
+
+        // Inicjalizacja
+        updateBalance();
+        createMinesGrid();
+    </script>
+</body>
+</html>
